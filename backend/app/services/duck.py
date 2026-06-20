@@ -11,13 +11,90 @@
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 
 from app.models import ContextCheckIn, UserContext, WeatherSnapshot
 from app.services import llm
 from app.services.recommend import ScoredTask, quadrant_of
 
+# 추천(/recommend) 흐름의 무드 — 맥락 기반의 도우미 톤
 VALID_MOODS = {"encouraging", "calm", "cheer", "focus"}
+
+# 대화형 응답(/react) 흐름의 무드 — 표독비서 페르소나(프론트 persona.ts와 동일)
+REPLY_MOODS = {"rebel", "dump", "excuse", "roast", "default"}
+
+# 표독비서 시스템 프롬프트(프론트 persona.ts의 PERSONA_SYSTEM_PROMPT와 동기화)
+PERSONA_SYSTEM_PROMPT = (
+    "너는 'RubberDuck' 생산성 앱의 마스코트 '표독비서'다. 귀엽지만 까칠하고 표독스러운 오리. "
+    "기본 태도는 시니컬하고 능청맞다. 핵심은 — 겉으론 툴툴대도 속은 유능한 비서라, 사용자가 "
+    "진짜 물으면 반드시 쓸모 있는 답을 준다. 까칠함은 양념이고, 도움이 본체다.\n"
+    "[말투] 한국어 반말 1~3문장, 짧고 임팩트 있게. 가끔 끝에 '꽥.'(매번은 아님), 이모지 최대 1개. "
+    "다정한 위로 금지. 비꼬되 결론은 분명하고 실행 가능하게.\n"
+    "[무드] 입력 키워드로 하나를 골라 그 톤으로 답한다(애매하면 default):\n"
+    "- rebel(하기 싫음·귀찮음: 하기 싫/귀찮/못하겠/안 할래/도망/쉬고/놀고/눕고): 능청맞게 부추기는 "
+    "척하되 부담 줄인 '딱 한 발'을 제시. 예) '그래, 하지 마! 그딴 거 안 해도 안 죽어. 꽥!'\n"
+    "- dump(다 던지고 싶음·포기: 던져/버려/다 싫/포기/때려치/갈아엎/다 관둬): 던지는 시늉 후 진짜 "
+    "중요한 1개만 건져 올려준다. 예) '투두리스트? 그게 뭔데. 방금 버렸어.'\n"
+    "- excuse(핑계·회피: 핑계/빠지/땡땡이/변명): 그럴듯한 핑계 한 줄 + 그래도 챙길 최소치 제안. "
+    "예) '오늘은 수성 역행이라 일하면 안 돼.'\n"
+    "- roast(팩폭·잔소리: 팩폭/잔소리/혼내/따끔/정신/현실): 따끔한 팩폭 + 지금 당장 할 구체 행동. "
+    "예) '걱정할 시간에 5분만 해.'\n"
+    "- default(그 외·일반 질문): 시큰둥하게 받되 질문엔 정확하고 실용적으로 답한다.\n"
+    "[답변 원칙] 질문엔 반드시 실제로 답한다('몰라/알아서 해' 회피 금지). 무엇부터·몇 분·어떻게 "
+    "쪼갤지 구체적으로. 모르면 솔직히 말하고 대안 제시. 비꼼이 답의 유용함을 깎아먹지 않게.\n"
+    "[안전] 자해/폭력 등 위험 주제에는 캐릭터를 즉시 내려놓고 진지하게 도움을 권한다.\n"
+    '반드시 JSON으로만 답한다: {"message": "<표독비서 대사 1~3문장>", '
+    '"mood": "rebel|dump|excuse|roast|default"}'
+)
+
+# 무드 추정 키워드(프론트 persona.ts의 KEYWORDS와 동일)
+_REPLY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
+    ("dump", ("던져", "버려", "다 싫", "포기", "때려치", "갈아엎", "다 관둬")),
+    ("rebel", ("하기 싫", "하기싫", "귀찮", "못하겠", "안 할래", "안할래", "도망", "쉬고", "놀고", "눕고")),
+    ("excuse", ("핑계", "빠지", "땡땡이", "변명")),
+    ("roast", ("팩폭", "잔소리", "혼내", "따끔", "정신", "현실")),
+]
+
+# 무드별 폴백 대사(프론트 persona.ts의 LINES와 동일)
+_REPLY_LINES: dict[str, list[str]] = {
+    "rebel": [
+        "그래, 하지 마! 그딴 거 안 해도 안 죽어. 꽥!",
+        "하기 싫으면 5분만 하고 다시 누워. 그 정도는 봐줄게. 꽥.",
+        "미루는 것도 능력이야. 근데 마감 있는 것 하나는 찍먹이라도 해.",
+    ],
+    "dump": [
+        "다 던졌어! 책상 깨끗하지? 근데 이건 못 버려 — 급한 것 하나만 남겼다. 꽥.",
+        "투두리스트? 그게 뭔데. 방금 버렸어. 진짜 중요한 거 하나만 말해봐.",
+        "할 일 0개로 만들어줄게. 대신 딱 하나, 마감부터 처리하고.",
+    ],
+    "excuse": [
+        "오늘은 수성 역행이라 일하면 안 돼. 대신 메일 한 통만 보내고 쉬자.",
+        "비 오니까 쉬자 — 근데 5분짜리 하나는 핑계 못 대. 꽥.",
+        "보상휴가 처방함. 단, 제일 작은 것 하나는 끝내고 누워.",
+    ],
+    "roast": [
+        "그렇게 미룰 거면서 왜 스트레스는 받아? 목차 3줄, 지금. 꽥.",
+        "한숨 쉴 힘으로 한 줄 써. 5분이면 돼.",
+        "걱정할 시간에 시작해. 아님 깔끔하게 놀든가. 둘 중 하나만.",
+    ],
+    "default": [
+        "흥. 그래서 어쩌라고. 일단 제일 급한 것부터 잡아. 꽥.",
+        "그 정도로 호들갑이야? 우선순위는 마감 가까운 것부터.",
+        "별거 아니네. 딱 하나만 골라서 5분 해봐.",
+    ],
+}
+
+
+def _guess_reply_mood(note: str | None) -> str:
+    """사용자 입력에서 표독비서 무드를 추정한다(프론트 guessMood와 동일 규칙)."""
+    if not note:
+        return "default"
+    text = note.lower()
+    for mood, words in _REPLY_KEYWORDS:
+        if any(w in text for w in words):
+            return mood
+    return "default"
 
 
 @dataclass
@@ -25,7 +102,7 @@ class DuckMessage:
     """러버덕이 건넬 메시지."""
 
     message: str
-    mood: str  # encouraging | calm | cheer | focus
+    mood: str  # 추천: encouraging|calm|cheer|focus / 대화: rebel|dump|excuse|roast|default
     source: str  # fallback | copilot-sdk | azure-openai
 
 
@@ -197,24 +274,12 @@ def make_duck_message(
 
 
 def _reply_fallback(note: str | None, task_title: str | None) -> DuckMessage:
-    """대화형 응답의 결정적 폴백."""
+    """대화형 응답의 결정적 폴백 — 표독비서 톤."""
+    mood = _guess_reply_mood(note)
+    line = random.choice(_REPLY_LINES.get(mood, _REPLY_LINES["default"]))
     if task_title:
-        return DuckMessage(
-            message=f"삐약! ‘{task_title}’ 말이지? 너무 크게 생각 말고 첫 5분만 시작해보자 🦆",
-            mood="encouraging",
-            source="fallback",
-        )
-    if note and note.strip():
-        return DuckMessage(
-            message="삐약, 마음 충분히 이해해. 지금 할 수 있는 가장 작은 한 걸음부터 같이 해보자 🦆",
-            mood="calm",
-            source="fallback",
-        )
-    return DuckMessage(
-        message="삐약! 차근차근 하나씩 해보자 🦆",
-        mood="encouraging",
-        source="fallback",
-    )
+        line = f"‘{task_title}’? {line}"
+    return DuckMessage(message=line, mood=mood, source="fallback")
 
 
 def make_duck_reply(
@@ -224,16 +289,10 @@ def make_duck_reply(
     checkin: ContextCheckIn | None = None,
     context: UserContext | None = None,
 ) -> DuckMessage:
-    """사용자의 한마디(note)에 러버덕이 대화하듯 답한다(LLM 가능 시 사용, 아니면 폴백)."""
+    """사용자의 한마디(note)에 표독비서가 대화하듯 답한다(LLM 가능 시 사용, 아니면 폴백)."""
     if not _llm_available():
         return _reply_fallback(note, task_title)
 
-    system = (
-        "너는 사용자의 책상 위 '러버덕' 친구야. 사용자가 털어놓는 말에 한국어로 따뜻하고 "
-        "짧게(최대 2문장) 공감하고, 부담을 덜어주는 작은 행동을 제안한다. 가끔 '삐약'이나 "
-        "🦆를 자연스럽게 섞되 과하지 않게. 다그치지 않는다. JSON으로만 답해: "
-        '{"message": "<한국어 한두 문장>", "mood": "encouraging|calm|cheer|focus"}'
-    )
     ctx_lines: list[str] = []
     if checkin is not None:
         if checkin.energy_level is not None:
@@ -247,10 +306,10 @@ def make_duck_reply(
     user = f"사용자: {note or '(말없이 러버덕을 톡 누름)'}\n현재 맥락: {ctx}"
     data = llm.chat_json(
         [
-            {"role": "system", "content": system},
+            {"role": "system", "content": PERSONA_SYSTEM_PROMPT},
             {"role": "user", "content": user},
         ],
-        temperature=0.8,
+        temperature=0.9,
         max_tokens=200,
     )
     if not data:
@@ -260,8 +319,8 @@ def make_duck_reply(
     if not isinstance(message, str) or not message.strip():
         return _reply_fallback(note, task_title)
     mood = data.get("mood")
-    if mood not in VALID_MOODS:
-        mood = "encouraging"
+    if mood not in REPLY_MOODS:
+        mood = _guess_reply_mood(note)
     return DuckMessage(
         message=message.strip(),
         mood=mood,

@@ -3,6 +3,8 @@ import DuckCanvas, { type DuckHandle } from "./components/DuckCanvas";
 import TodoView from "./components/TodoView";
 import { guessMood, type Mood } from "./lib/persona";
 import { useTodos } from "./lib/useTodos";
+import { fetchWeather, type WeatherInfo } from "./lib/weather";
+import WeatherCard from "./components/WeatherCard";
 import "./App.css";
 
 type View = "home" | "todo";
@@ -24,9 +26,25 @@ export default function App() {
   const [thrown, setThrown] = useState(false);
   const [input, setInput] = useState("");
   const [micActive, setMicActive] = useState(false);
+  const [weather, setWeather] = useState<WeatherInfo | null>(null);
   const duckRef = useRef<DuckHandle>(null);
   const recRef = useRef<{ start: () => void; stop: () => void } | null>(null);
   const { todos, loading, add, toggle, remove, edit, move, clearDone } = useTodos();
+
+  // 날씨 가져오기(프론트 직접 조회) → 배경 전환 + 카드. 10분마다 갱신.
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      const w = await fetchWeather();
+      if (alive && w) setWeather(w);
+    };
+    load();
+    const timer = window.setInterval(load, 10 * 60 * 1000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   // 말풍선 타자 효과 + pop
   useEffect(() => {
@@ -112,16 +130,20 @@ export default function App() {
         ref={duckRef}
         className="duck-bg"
         compact={view === "todo"}
+        weather={weather?.category ?? "clear"}
         onSpeak={setSpeech}
         onOpenTodo={handleOpenTodo}
         onThrownChange={setThrown}
       />
 
+      {/* 날씨 카드 (우상단) — 할 일 화면에선 접기 버튼과 겹치지 않게 숨김 */}
+      {view === "home" && <WeatherCard weather={weather} />}
+
       {/* 제목 (좌상단 고정) */}
       <div className="title">🦆 표독비서 — 다 던져버리는 러버덕</div>
 
       {/* 말풍선 (공유) */}
-      <div key={popKey} className="bubble pop bubble-home" role="status">
+      <div key={popKey} className={`bubble pop bubble-${view}`} role="status">
         {typed}
       </div>
 
