@@ -55,3 +55,7 @@ htmlcov/
 *.tfstate
 *.tfstate.*
 .terraform/
+
+# ===== 디버그/테스트 산출물 =====
+.playwright-mcp/
+duck-home.png

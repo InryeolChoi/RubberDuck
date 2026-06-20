@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>걱정 들어주는 러버덕 · Worry Duck</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="room">
+    <!-- 은은한 빛 -->
+    <div class="glow"></div>
+
+    <div class="desk-scene">
+      <!-- 말풍선 -->
+      <div class="bubble" id="bubble">
+        <span id="bubbleText">안녕! 나는 꽥비서야.<br>오늘 뭐가 제일 신경 쓰여?</span>
+      </div>
+
+      <!-- 오리 -->
+      <div class="duck-wrap" id="duckWrap">
+        <div class="duck-float" id="duckFloat">
+          <svg class="duck" viewBox="0 0 340 340" id="duckSvg" aria-label="걱정인형 러버덕">
+            <defs>
+              <radialGradient id="bodyGrad" cx="40%" cy="30%" r="78%">
+                <stop offset="0%" stop-color="#fff7cf" />
+                <stop offset="50%" stop-color="#ffe04f" />
+                <stop offset="100%" stop-color="#f6c200" />
+              </radialGradient>
+              <radialGradient id="headGrad" cx="38%" cy="28%" r="80%">
+                <stop offset="0%" stop-color="#fffae0" />
+                <stop offset="50%" stop-color="#ffe65a" />
+                <stop offset="100%" stop-color="#f8cb12" />
+              </radialGradient>
+              <linearGradient id="beakGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ffb14d" />
+                <stop offset="100%" stop-color="#fb7e1e" />
+              </linearGradient>
+              <radialGradient id="cheekGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#ff9db0" stop-opacity="0.9" />
+                <stop offset="100%" stop-color="#ff9db0" stop-opacity="0" />
+              </radialGradient>
+            </defs>
+
+            <!-- 작은 손(날개) 왼쪽 -->
+            <ellipse class="hand hand-l" id="handL" cx="78" cy="232" rx="26" ry="34" fill="#f4c200" />
+            <!-- 작은 손(날개) 오른쪽 -->
+            <ellipse class="hand hand-r" id="handR" cx="262" cy="232" rx="26" ry="34" fill="#f4c200" />
+
+            <!-- 몸통 (동글동글) -->
+            <ellipse cx="170" cy="250" rx="104" ry="80" fill="url(#bodyGrad)" />
+            <!-- 배 하이라이트 -->
+            <ellipse cx="150" cy="245" rx="58" ry="46" fill="#fff3b0" opacity="0.45" />
+
+            <!-- 머리 (크게, 멍청+귀엽게) -->
+            <g class="head" id="head">
+              <circle cx="170" cy="130" r="98" fill="url(#headGrad)" />
+              <!-- 삐죽 머리카락 -->
+              <path d="M170 34 q-4 -24 16 -28 q-6 16 6 24" fill="#f4c200" />
+              <path d="M186 36 q10 -16 26 -12 q-12 8 -10 22" fill="#f4c200" opacity="0.85" />
+
+              <!-- 부리 (살짝 벌린 멍한 미소) -->
+              <g class="beak" id="beak">
+                <path d="M118 158 q-44 6 -44 24 q2 16 46 16 q14 -22 -2 -40Z" fill="url(#beakGrad)" />
+                <path d="M76 188 q22 8 44 2 q-4 12 -22 12 q-18 -2 -22 -14Z" fill="#e15f18" opacity="0.5" />
+              </g>
+
+              <!-- 볼터치 -->
+              <circle cx="104" cy="156" r="22" fill="url(#cheekGrad)" />
+              <circle cx="232" cy="150" r="22" fill="url(#cheekGrad)" />
+
+              <!-- 눈썹 (어리숙한 살짝 처진) -->
+              <path class="brow" d="M96 84 q22 -12 44 -2" stroke="#caa100" stroke-width="6" fill="none" stroke-linecap="round" />
+              <path class="brow" d="M204 82 q22 -10 44 2" stroke="#caa100" stroke-width="6" fill="none" stroke-linecap="round" />
+
+              <!-- 왼쪽 눈 -->
+              <g class="eye">
+                <circle cx="122" cy="118" r="30" fill="#fff" />
+                <circle class="pupil" data-eye="l" cx="122" cy="118" r="15" fill="#2c2c2c" />
+                <circle class="glint" data-glint="l" cx="116" cy="111" r="6" fill="#fff" />
+                <rect class="lid" data-lid="l" x="92" y="88" width="60" height="0" rx="8" fill="url(#headGrad)" />
+              </g>
+              <!-- 오른쪽 눈 -->
+              <g class="eye">
+                <circle cx="220" cy="116" r="30" fill="#fff" />
+                <circle class="pupil" data-eye="r" cx="220" cy="116" r="15" fill="#2c2c2c" />
+                <circle class="glint" data-glint="r" cx="214" cy="109" r="6" fill="#fff" />
+                <rect class="lid" data-lid="r" x="190" y="86" width="60" height="0" rx="8" fill="url(#headGrad)" />
+              </g>
+            </g>
+          </svg>
+        </div>
+        <div class="shadow" id="shadow"></div>
+      </div>
+
+      <!-- 책상 -->
+      <div class="desk"></div>
+    </div>
+
+    <!-- 대화 입력 영역 -->
+    <div class="panel">
+      <div class="quick" id="quick">
+        <button class="chip" data-mood="cheer">응원해줘 💪</button>
+        <button class="chip" data-mood="todo">할 일 정리 📝</button>
+        <button class="chip" data-mood="listen">그냥 들어줘 🫧</button>
+        <button class="chip" data-mood="calm">불안해 😟</button>
+      </div>
+      <form class="inputbar" id="form">
+        <input id="msg" type="text" maxlength="120" autocomplete="off"
+               placeholder="고민이나 할 일을 적어보세요…" />
+        <button class="send" type="submit" aria-label="보내기">꽥!</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

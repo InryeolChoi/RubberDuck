@@ -1,122 +1,207 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useEffect, useRef, useState } from "react";
+import DuckCanvas, { type DuckHandle } from "./components/DuckCanvas";
+import TodoView from "./components/TodoView";
+import { guessMood, type Mood } from "./lib/persona";
+import { useTodos } from "./lib/useTodos";
+import "./App.css";
 
-function App() {
-  const [count, setCount] = useState(0)
+type View = "home" | "todo";
+
+const CHIPS: { label: string; mood: Mood }[] = [
+  { label: "하기 싫어 😤", mood: "rebel" },
+  { label: "다 던져버려 🗑️", mood: "dump" },
+  { label: "핑계 대줘 😏", mood: "excuse" },
+  { label: "팩폭 해줘 🔥", mood: "roast" },
+];
+
+const GREETING = "왔어? 오늘은 또 뭐가 그렇게 하기 싫어서 왔니. 말해봐. 꽥.";
+
+export default function App() {
+  const [view, setView] = useState<View>("home");
+  const [speech, setSpeech] = useState(GREETING);
+  const [typed, setTyped] = useState(GREETING);
+  const [popKey, setPopKey] = useState(0);
+  const [thrown, setThrown] = useState(false);
+  const [input, setInput] = useState("");
+  const [micActive, setMicActive] = useState(false);
+  const duckRef = useRef<DuckHandle>(null);
+  const recRef = useRef<{ start: () => void; stop: () => void } | null>(null);
+  const { todos, loading, add, toggle, remove, edit, move, clearDone } = useTodos();
+
+  // 말풍선 타자 효과 + pop
+  useEffect(() => {
+    setPopKey((k) => k + 1);
+    setTyped("");
+    let i = 0;
+    const timer = window.setInterval(() => {
+      i += 1;
+      setTyped(speech.slice(0, i));
+      if (i >= speech.length) window.clearInterval(timer);
+    }, 26);
+    return () => window.clearInterval(timer);
+  }, [speech]);
+
+  // 음성 입력 (Web Speech API)
+  useEffect(() => {
+    const w = window as unknown as {
+      SpeechRecognition?: new () => SpeechRecognitionLike;
+      webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+    };
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
+    if (!SR) return;
+    const rec = new SR();
+    rec.lang = "ko-KR";
+    rec.interimResults = true;
+    rec.continuous = false;
+    rec.onstart = () => setMicActive(true);
+    rec.onend = () => setMicActive(false);
+    rec.onerror = () => setMicActive(false);
+    rec.onresult = (e: SpeechRecognitionEventLike) => {
+      let txt = "";
+      for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
+      setInput(txt);
+      const last = e.results[e.results.length - 1];
+      if (last.isFinal && txt.trim()) {
+        duckRef.current?.respond(guessMood(txt), txt.trim());
+        setInput("");
+      }
+    };
+    recRef.current = rec;
+    return () => {
+      try {
+        rec.stop();
+      } catch {
+        /* noop */
+      }
+      recRef.current = null;
+    };
+  }, []);
+
+  const toggleMic = () => {
+    const rec = recRef.current;
+    if (!rec) return;
+    if (micActive) rec.stop();
+    else
+      try {
+        rec.start();
+      } catch {
+        /* 이미 시작됨 */
+      }
+  };
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text) {
+      duckRef.current?.bounce();
+      return;
+    }
+    duckRef.current?.respond(guessMood(text), text);
+    setInput("");
+  };
+
+  const handleOpenTodo = () => setView("todo");
+  const closeTodo = () => {
+    duckRef.current?.goHome();
+    setView("home");
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className={`app view-${view}`}>
+      <DuckCanvas
+        ref={duckRef}
+        className="duck-bg"
+        compact={view === "todo"}
+        onSpeak={setSpeech}
+        onOpenTodo={handleOpenTodo}
+        onThrownChange={setThrown}
+      />
 
-      <div className="ticks"></div>
+      {/* 제목 (좌상단 고정) */}
+      <div className="title">🦆 표독비서 — 다 던져버리는 러버덕</div>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      {/* 말풍선 (공유) */}
+      <div key={popKey} className="bubble pop bubble-home" role="status">
+        {typed}
+      </div>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      {view === "home" && (
+        <>
+          <button className="colorBtn" onClick={() => duckRef.current?.nextColor()}>
+            색 바꾸기 🎨
+          </button>
+
+          <div className="panel">
+            <div className="quick">
+              {CHIPS.map((c) => (
+                <button key={c.mood} className="chip" onClick={() => duckRef.current?.respond(c.mood)}>
+                  {c.label}
+                </button>
+              ))}
+              <button className="chip" onClick={() => duckRef.current?.requestOpen()}>
+                {thrown ? "🪃 주워오기" : "할 일 보기 📋"}
+              </button>
+            </div>
+            <form className="inputbar" onSubmit={onSubmit}>
+              <input
+                value={input}
+                maxLength={120}
+                autoComplete="off"
+                placeholder="뭐가 그렇게 하기 싫어? 말해봐…"
+                onChange={(e) => setInput(e.target.value)}
+              />
+              <button
+                type="button"
+                className={`mic${micActive ? " rec" : ""}`}
+                title="음성으로 말하기"
+                aria-label="음성 입력"
+                onClick={toggleMic}
+              >
+                🎤
+              </button>
+              <button className="send" type="submit">
+                꽥!
+              </button>
+            </form>
+          </div>
+        </>
+      )}
+
+      {view === "todo" && (
+        <div className="todo-overlay" role="dialog" aria-label="할 일">
+          <button className="duck-collapse" onClick={closeTodo} aria-label="홈으로">
+            ⤸ 접기
+          </button>
+          <div className="todo-overlay-card">
+            <TodoView
+              todos={todos}
+              loading={loading}
+              onAdd={add}
+              onToggle={toggle}
+              onRemove={remove}
+              onEdit={edit}
+              onMove={move}
+              onClearDone={clearDone}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
-export default App
+// 최소 타입(브라우저 Web Speech API)
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  onresult: ((e: SpeechRecognitionEventLike) => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+interface SpeechRecognitionEventLike {
+  results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>;
+}
