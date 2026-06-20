@@ -1,0 +1,57 @@
+# ===== 환경 변수 / 비밀 값 =====
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ===== Python (backend) =====
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ===== Node / 프론트엔드 (frontend) =====
+node_modules/
+dist/
+dist-ssr/
+build/
+.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ===== 로그 =====
+logs/
+*.log
+
+# ===== OS 생성 파일 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== 에디터 / IDE =====
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ===== 테스트 / 커버리지 =====
+coverage/
+htmlcov/
+.coverage
+.coverage.*
+
+# ===== Azure / 배포 =====
+.azure/
+*.tfstate
+*.tfstate.*
+.terraform/
