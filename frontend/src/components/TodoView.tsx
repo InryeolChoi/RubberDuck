@@ -13,18 +13,17 @@ interface TodoViewProps {
 }
 
 const QUADRANTS: { key: Quadrant; title: string; hint: string; tone: string }[] = [
-  { key: "q1", title: "지금 당장", hint: "중요 · 긴급", tone: "q1" },
-  { key: "q2", title: "계획해서", hint: "중요 · 비긴급", tone: "q2" },
-  { key: "q3", title: "넘겨버려", hint: "비중요 · 긴급", tone: "q3" },
-  { key: "q4", title: "버려도 됨", hint: "비중요 · 비긴급", tone: "q4" },
+  { key: "Q1", title: "지금 당장", hint: "중요 · 긴급", tone: "q1" },
+  { key: "Q2", title: "계획해서", hint: "중요 · 비긴급", tone: "q2" },
+  { key: "Q3", title: "넘겨버려", hint: "비중요 · 긴급", tone: "q3" },
+  { key: "Q4", title: "버려도 됨", hint: "비중요 · 비긴급", tone: "q4" },
 ];
 
 const QUAD_LABEL: Record<Quadrant, string> = {
-  q1: "지금 당장",
-  q2: "계획해서",
-  q3: "넘겨버려",
-  q4: "버려도 됨",
-  none: "받은 일",
+  Q1: "지금 당장",
+  Q2: "계획해서",
+  Q3: "넘겨버려",
+  Q4: "버려도 됨",
 };
 
 function TodoItem({
@@ -41,12 +40,12 @@ function TodoItem({
   onMove: (id: string, q: Quadrant) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(todo.text);
+  const [draft, setDraft] = useState(todo.title);
 
   const commit = () => {
     const t = draft.trim();
     if (t) onEdit(todo.id, t);
-    else setDraft(todo.text);
+    else setDraft(todo.title);
     setEditing(false);
   };
 
@@ -70,14 +69,14 @@ function TodoItem({
           onKeyDown={(e) => {
             if (e.key === "Enter") commit();
             if (e.key === "Escape") {
-              setDraft(todo.text);
+              setDraft(todo.title);
               setEditing(false);
             }
           }}
         />
       ) : (
         <span className="todo-text" onDoubleClick={() => setEditing(true)} title="더블클릭하여 수정">
-          {todo.text}
+          {todo.title}
         </span>
       )}
 
@@ -88,7 +87,7 @@ function TodoItem({
           onChange={(e) => onMove(todo.id, e.target.value as Quadrant)}
           aria-label="사분면 이동"
         >
-          {(["none", "q1", "q2", "q3", "q4"] as Quadrant[]).map((q) => (
+          {(["Q1", "Q2", "Q3", "Q4"] as Quadrant[]).map((q) => (
             <option key={q} value={q}>
               {QUAD_LABEL[q]}
             </option>
@@ -115,7 +114,7 @@ export default function TodoView({
   const [text, setText] = useState("");
 
   const byQuad = useMemo(() => {
-    const map: Record<Quadrant, Todo[]> = { q1: [], q2: [], q3: [], q4: [], none: [] };
+    const map: Record<Quadrant, Todo[]> = { Q1: [], Q2: [], Q3: [], Q4: [] };
     for (const t of todos) map[t.quadrant].push(t);
     return map;
   }, [todos]);
@@ -124,7 +123,7 @@ export default function TodoView({
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    onAdd(text, "none");
+    onAdd(text, "Q1");
     setText("");
   };
 
@@ -164,24 +163,6 @@ export default function TodoView({
         </div>
       ) : (
         <>
-          {byQuad.none.length > 0 && (
-            <section className="inbox">
-              <h2 className="inbox-title">받은 일 · 아직 분류 안 됨</h2>
-              <ul className="todo-list">
-                {byQuad.none.map((t) => (
-                  <TodoItem
-                    key={t.id}
-                    todo={t}
-                    onToggle={onToggle}
-                    onRemove={onRemove}
-                    onEdit={onEdit}
-                    onMove={onMove}
-                  />
-                ))}
-              </ul>
-            </section>
-          )}
-
           <div className="matrix-frame">
             <div className="axis-corner" aria-hidden>
               긴급×중요

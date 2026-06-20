@@ -1,119 +1,173 @@
 import { useCallback, useEffect, useState } from "react";
 
-export type Quadrant = "q1" | "q2" | "q3" | "q4" | "none";
+// 백엔드 계약(SPEC.md §7.2, 실제 머지된 구현 기준)에 맞춘다.
+//   GET    /api/tasks            → TaskRead[]
+//   POST   /api/tasks            { title, importance, urgency, ... }
+//   PATCH  /api/tasks/{id}       { title?, importance?, urgency?, status? }
+//   DELETE /api/tasks/{id}
+// 사분면은 저장하지 않고 importance×urgency(임계값 3)로 파생된 대문자 Q1~Q4를 쓴다.
+export type Quadrant = "Q1" | "Q2" | "Q3" | "Q4";
 
+type Status = "todo" | "doing" | "done";
+
+// 프론트 화면용 모델 — 백엔드 TaskRead를 화면에 맞게 가공한 형태.
 export interface Todo {
+  id: string; // 서버 UUID
+  title: string;
+  done: boolean; // status === "done"
+  quadrant: Quadrant; // 서버 파생값(대문자)
+  importance: number; // 1~5
+  urgency: number; // 1~5
+  createdAt: number; // epoch ms (created_at ISO → 숫자)
+}
+
+// 백엔드 TaskRead 응답 형태(필요 필드만).
+interface BackendTask {
   id: string;
-  text: string;
-  done: boolean;
+  title: string;
+  importance: number;
+  urgency: number;
   quadrant: Quadrant;
-  createdAt: number;
+  status: Status;
+  created_at: string; // ISO-8601
 }
 
-const STORE_KEY = "rubberduck_todos";
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
-// 백엔드/DB가 아직 없으므로 목 데이터로 대체한다.
-// 추후 GET /tasks 응답으로 교체하면 된다.
-const MOCK_TODOS: Omit<Todo, "id" | "createdAt">[] = [
-  { text: "내일 발표 자료 마무리", done: false, quadrant: "q1" },
-  { text: "고객사 긴급 버그 회신", done: false, quadrant: "q1" },
-  { text: "다음 분기 로드맵 작성", done: false, quadrant: "q2" },
-  { text: "운동 루틴 다시 시작", done: false, quadrant: "q2" },
-  { text: "회식 장소 예약 전화", done: false, quadrant: "q3" },
-  { text: "사내 설문 응답하기", done: false, quadrant: "q3" },
-  { text: "밀린 영상 몰아보기", done: true, quadrant: "q4" },
-  { text: "안 쓰는 앱 알림 끄기", done: false, quadrant: "q4" },
-  { text: "분류 안 한 잡일 메모", done: false, quadrant: "none" },
-];
+// 사분면 → importance/urgency 점수(임계값 3 기준으로 명확히 파생되도록).
+const QUADRANT_SCORE: Record<Quadrant, { importance: number; urgency: number }> = {
+  Q1: { importance: 5, urgency: 5 }, // 중요 · 긴급
+  Q2: { importance: 5, urgency: 1 }, // 중요 · 비긴급
+  Q3: { importance: 1, urgency: 5 }, // 비중요 · 긴급
+  Q4: { importance: 1, urgency: 1 }, // 비중요 · 비긴급
+};
 
-function load(): Todo[] {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Todo[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function toTodo(t: BackendTask): Todo {
+  return {
+    id: t.id,
+    title: t.title,
+    done: t.status === "done",
+    quadrant: t.quadrant,
+    importance: t.importance,
+    urgency: t.urgency,
+    createdAt: Date.parse(t.created_at) || Date.now(),
+  };
 }
 
-function uid(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
-
-// DB에서 가져오는 느낌으로 살짝 지연을 준다.
-// 저장된 데이터가 있으면 그걸, 없으면 목 데이터를 돌려준다.
-function fetchTodos(): Promise<Todo[]> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const stored = load();
-      if (stored.length) {
-        resolve(stored);
-        return;
-      }
-      const now = Date.now();
-      resolve(
-        MOCK_TODOS.map((m, i) => ({ ...m, id: uid(), createdAt: now + i })),
-      );
-    }, 650);
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { "Content-Type": "application/json" },
+    ...init,
   });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
 }
 
 export function useTodos() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 최초 1회: DB에서 가져오는 느낌으로 목 데이터 로드
-  useEffect(() => {
-    let alive = true;
-    fetchTodos().then((data) => {
-      if (!alive) return;
-      setTodos(data);
+  const reload = useCallback(async () => {
+    if (!API_BASE) {
+      setTodos([]);
       setLoading(false);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  // 로딩이 끝난 뒤에만 저장 (빈 배열로 덮어쓰지 않도록)
-  useEffect(() => {
-    if (loading) return;
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(todos));
-    } catch {
-      /* 저장 실패 무시 */
+      return;
     }
-  }, [todos, loading]);
-
-  const add = useCallback((text: string, quadrant: Quadrant = "none") => {
-    const t = text.trim();
-    if (!t) return;
-    setTodos((prev) => [
-      ...prev,
-      { id: uid(), text: t, done: false, quadrant, createdAt: Date.now() },
-    ]);
+    try {
+      const data = await api<BackendTask[]>("/api/tasks");
+      setTodos(data.map(toTodo));
+    } catch {
+      setTodos([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const toggle = useCallback((id: string) => {
-    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  // 최초 1회: 백엔드에서 할 일 목록 로드
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const add = useCallback(
+    async (title: string, quadrant: Quadrant = "Q1") => {
+      const t = title.trim();
+      if (!t || !API_BASE) return;
+      const { importance, urgency } = QUADRANT_SCORE[quadrant];
+      try {
+        const created = await api<BackendTask>("/api/tasks", {
+          method: "POST",
+          body: JSON.stringify({ title: t, importance, urgency }),
+        });
+        setTodos((prev) => [toTodo(created), ...prev]);
+      } catch {
+        /* 생성 실패 무시 */
+      }
+    },
+    [],
+  );
+
+  const patch = useCallback(
+    async (id: string, body: Record<string, unknown>) => {
+      if (!API_BASE) return;
+      try {
+        const updated = await api<BackendTask>(`/api/tasks/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
+        setTodos((prev) => prev.map((t) => (t.id === id ? toTodo(updated) : t)));
+      } catch {
+        /* 수정 실패 무시 */
+      }
+    },
+    [],
+  );
+
+  const toggle = useCallback(
+    (id: string) => {
+      const cur = todos.find((t) => t.id === id);
+      if (!cur) return;
+      void patch(id, { status: cur.done ? "todo" : "done" });
+    },
+    [todos, patch],
+  );
+
+  const remove = useCallback(async (id: string) => {
+    if (!API_BASE) return;
+    try {
+      await api<void>(`/api/tasks/${id}`, { method: "DELETE" });
+      setTodos((prev) => prev.filter((t) => t.id !== id));
+    } catch {
+      /* 삭제 실패 무시 */
+    }
   }, []);
 
-  const remove = useCallback((id: string) => {
-    setTodos((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+  const edit = useCallback(
+    (id: string, title: string) => {
+      const t = title.trim();
+      if (!t) return;
+      void patch(id, { title: t });
+    },
+    [patch],
+  );
 
-  const edit = useCallback((id: string, text: string) => {
-    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, text } : t)));
-  }, []);
+  const move = useCallback(
+    (id: string, quadrant: Quadrant) => {
+      void patch(id, QUADRANT_SCORE[quadrant]);
+    },
+    [patch],
+  );
 
-  const move = useCallback((id: string, quadrant: Quadrant) => {
-    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, quadrant } : t)));
-  }, []);
-
-  const clearDone = useCallback(() => {
+  const clearDone = useCallback(async () => {
+    if (!API_BASE) return;
+    const doneIds = todos.filter((t) => t.done).map((t) => t.id);
+    await Promise.all(
+      doneIds.map((id) =>
+        api<void>(`/api/tasks/${id}`, { method: "DELETE" }).catch(() => undefined),
+      ),
+    );
     setTodos((prev) => prev.filter((t) => !t.done));
-  }, []);
+  }, [todos]);
 
   return { todos, loading, add, toggle, remove, edit, move, clearDone };
 }

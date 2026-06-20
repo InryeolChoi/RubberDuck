@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: rubberduck
+metadata:
+  template: rubberduck@0.1.0
+services:
+  api:
+    project: ./backend
+    language: python
+    host: appservice
+  web:
+    project: ./frontend
+    language: js
+    host: staticwebapp
+    dist: dist
