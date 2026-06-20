@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routers import context, duck, recommend, tasks
+
 load_dotenv()
 
 app = FastAPI(
@@ -23,6 +25,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(tasks.router)
+app.include_router(context.router)
+app.include_router(duck.router)
+app.include_router(recommend.router)
 
 
 @app.get("/health")
